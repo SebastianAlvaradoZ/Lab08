@@ -28,3 +28,9 @@ local.properties
 # Logs y volcados de la JVM
 *.log
 hs_err_pid*
+
+# Configuracion de Firebase (especifica de cada proyecto)
+google-services.json
+
+# Archivos generados por el IDE
+/.idea/
