@@ -7,19 +7,12 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
-import androidx.room.Room
 import com.example.lab08.ui.theme.Lab08Theme
 
 class MainActivity : ComponentActivity() {
 
     // Una única instancia de la base de datos
-    private val db by lazy {
-        Room.databaseBuilder(
-            applicationContext,
-            TaskDatabase::class.java,
-            "task_db"
-        ).build()
-    }
+    private val db by lazy { TaskDatabase.getInstance(applicationContext) }
 
     // El ViewModel sobrevive a rotaciones; se crea con una factory porque recibe el DAO
     private val viewModel: TaskViewModel by viewModels {

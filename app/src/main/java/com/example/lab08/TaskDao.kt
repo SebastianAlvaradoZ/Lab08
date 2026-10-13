@@ -20,8 +20,9 @@ interface TaskDao {
 
     // Insertar una nueva tarea
     @Insert
-    suspend fun insertTask(task: Task)
-
+    suspend fun insertTask(task: Task): Long
+    @Query("SELECT * FROM tasks WHERE id = :id")
+    suspend fun getById(id: Int): Task?
     // Marcar una tarea como completada o no completada
     @Update
     suspend fun updateTask(task: Task)
