@@ -61,7 +61,11 @@ enum class ReminderOption(val label: String) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TaskScreen(viewModel: TaskViewModel) {
+fun TaskScreen(
+    viewModel: TaskViewModel,
+    userEmail: String?,
+    onSignOut: () -> Unit
+) {
     val context = LocalContext.current
     val tasks by viewModel.tasks.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
@@ -100,6 +104,11 @@ fun TaskScreen(viewModel: TaskViewModel) {
                         DropdownMenuItem(
                             text = { Text("Eliminar todas las tareas") },
                             onClick = { viewModel.deleteAllTasks(); menuOpen = false }
+                        )
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text("Cerrar sesión (${userEmail ?: ""})") },
+                            onClick = { menuOpen = false; onSignOut() }
                         )
                     }
                 }
