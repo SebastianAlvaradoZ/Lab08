@@ -7,9 +7,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-class TaskViewModel(private val dao: TaskDao) : ViewModel() {
+class TaskViewModel(
+    private val dao: TaskDao,
+    private val scheduler: ReminderScheduler
+) : ViewModel() {
 
-    // Estado de la UI: se deriva del Flow de Room y se actualiza solo
     val tasks: StateFlow<List<Task>> = dao.observeAll()
         .stateIn(
             scope = viewModelScope,
@@ -17,20 +19,32 @@ class TaskViewModel(private val dao: TaskDao) : ViewModel() {
             initialValue = emptyList()
         )
 
-    fun addTask(description: String) {
+    fun addTask(description: String, reminderAt: Long? = null) {
         viewModelScope.launch {
-            dao.insertTask(Task(description = description.trim()))
+            val id = dao.insertTask(
+                Task(description = description.trim(), reminderAt = reminderAt)
+            ).toInt()
+            if (reminderAt != null) scheduler.schedule(id, reminderAt)
         }
     }
 
     fun toggleTaskCompletion(task: Task) {
         viewModelScope.launch {
-            dao.updateTask(task.copy(isCompleted = !task.isCompleted))
+            val updated = task.copy(isCompleted = !task.isCompleted)
+            dao.updateTask(updated)
+            if (updated.isCompleted) {
+                scheduler.cancel(task.id)
+            } else if (updated.reminderAt != null && updated.reminderAt > System.currentTimeMillis()) {
+                scheduler.schedule(task.id, updated.reminderAt)
+            }
         }
     }
 
     fun deleteTask(task: Task) {
-        viewModelScope.launch { dao.deleteTask(task) }
+        viewModelScope.launch {
+            scheduler.cancel(task.id)
+            dao.deleteTask(task)
+        }
     }
 
     fun deleteCompleted() {
@@ -38,6 +52,9 @@ class TaskViewModel(private val dao: TaskDao) : ViewModel() {
     }
 
     fun deleteAllTasks() {
-        viewModelScope.launch { dao.deleteAllTasks() }
+        viewModelScope.launch {
+            scheduler.cancelAll()
+            dao.deleteAllTasks()
+        }
     }
 }

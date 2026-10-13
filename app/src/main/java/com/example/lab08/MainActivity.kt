@@ -19,13 +19,13 @@ class MainActivity : ComponentActivity() {
         object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                TaskViewModel(db.taskDao()) as T
-        }
+                TaskViewModel(db.taskDao(), ReminderScheduler(applicationContext)) as T        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        NotificationHelper.createChannel(this)
         setContent {
             Lab08Theme {
                 TaskScreen(viewModel)

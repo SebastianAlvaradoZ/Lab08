@@ -1,11 +1,19 @@
 package com.example.lab08
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -14,22 +22,64 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
+
+// Opciones de recordatorio que ofrece el diálogo
+enum class ReminderOption(val label: String) {
+    NONE("Sin recordatorio"),
+    IN_1_MINUTE("En 1 minuto"),
+    IN_1_HOUR("En 1 hora"),
+    TOMORROW_9AM("Mañana 9:00");
+
+    fun triggerAtMillis(): Long? = when (this) {
+        NONE -> null
+        IN_1_MINUTE -> System.currentTimeMillis() + 60_000L
+        IN_1_HOUR -> System.currentTimeMillis() + 3_600_000L
+        TOMORROW_9AM -> Calendar.getInstance().apply {
+            add(Calendar.DAY_OF_YEAR, 1)
+            set(Calendar.HOUR_OF_DAY, 9)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TaskScreen(viewModel: TaskViewModel) {
+    val context = LocalContext.current
     val tasks by viewModel.tasks.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
     var showCompleted by remember { mutableStateOf(true) }
     var menuOpen by remember { mutableStateOf(false) }
+
+    // Permiso de notificaciones (Android 13+): se pide solo cuando el usuario elige un recordatorio
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (!granted) {
+            Toast.makeText(
+                context,
+                "Sin permiso no verás los recordatorios",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
 
     val pending = tasks.filter { !it.isCompleted }
     val completed = tasks.filter { it.isCompleted }
@@ -108,9 +158,17 @@ fun TaskScreen(viewModel: TaskViewModel) {
     if (showAddDialog) {
         AddTaskDialog(
             onDismiss = { showAddDialog = false },
-            onConfirm = {
-                viewModel.addTask(it)
+            onConfirm = { text, reminderAt ->
+                viewModel.addTask(text, reminderAt)
                 showAddDialog = false
+                val needsPermission = reminderAt != null &&
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        ContextCompat.checkSelfPermission(
+                            context, Manifest.permission.POST_NOTIFICATIONS
+                        ) != PackageManager.PERMISSION_GRANTED
+                if (needsPermission) {
+                    permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
             }
         )
     }
@@ -126,14 +184,33 @@ fun TaskRow(task: Task, onToggle: () -> Unit, onDelete: () -> Unit) {
     ) {
         CircleCheck(checked = task.isCompleted, onClick = onToggle)
         Spacer(modifier = Modifier.width(8.dp))
-        Text(
-            text = task.description,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyLarge,
-            textDecoration = if (task.isCompleted) TextDecoration.LineThrough else TextDecoration.None,
-            color = if (task.isCompleted) MaterialTheme.colorScheme.onSurfaceVariant
-            else MaterialTheme.colorScheme.onSurface
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = task.description,
+                style = MaterialTheme.typography.bodyLarge,
+                textDecoration = if (task.isCompleted) TextDecoration.LineThrough else TextDecoration.None,
+                color = if (task.isCompleted) MaterialTheme.colorScheme.onSurfaceVariant
+                else MaterialTheme.colorScheme.onSurface
+            )
+            // Hora del recordatorio (solo en tareas pendientes)
+            if (task.reminderAt != null && !task.isCompleted) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Notifications,
+                        contentDescription = "Recordatorio",
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = SimpleDateFormat("dd/MM HH:mm", Locale.getDefault())
+                            .format(Date(task.reminderAt)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
         IconButton(onClick = onDelete) {
             Icon(Icons.Default.Delete, contentDescription = "Eliminar tarea")
         }
@@ -192,22 +269,45 @@ fun CompletedHeader(count: Int, expanded: Boolean, onClick: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddTaskDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+fun AddTaskDialog(onDismiss: () -> Unit, onConfirm: (String, Long?) -> Unit) {
     var text by remember { mutableStateOf("") }
+    var option by remember { mutableStateOf(ReminderOption.NONE) }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Nueva tarea") },
         text = {
-            OutlinedTextField(
-                value = text,
-                onValueChange = { text = it },
-                label = { Text("Título") },
-                singleLine = true
-            )
+            Column {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text("Título") },
+                    singleLine = true
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Recordatorio", style = MaterialTheme.typography.labelLarge)
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    ReminderOption.values().forEach { opt ->
+                        FilterChip(
+                            selected = option == opt,
+                            onClick = { option = opt },
+                            label = { Text(opt.label) }
+                        )
+                    }
+                }
+            }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(text) }, enabled = text.isNotBlank()) {
+            TextButton(
+                onClick = { onConfirm(text, option.triggerAtMillis()) },
+                enabled = text.isNotBlank()
+            ) {
                 Text("Agregar")
             }
         },
