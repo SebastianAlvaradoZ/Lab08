@@ -38,4 +38,17 @@ interface TaskDao {
     // Eliminar todas las tareas
     @Query("DELETE FROM tasks")
     suspend fun deleteAllTasks()
+    // --- Sincronización con la nube ---
+
+    // Buscar una tarea por su identificador de la nube
+    @Query("SELECT * FROM tasks WHERE cloud_id = :cloudId")
+    suspend fun getByCloudId(cloudId: String): Task?
+
+    // Eliminar una tarea por su identificador de la nube (cambio hecho en otro dispositivo)
+    @Query("DELETE FROM tasks WHERE cloud_id = :cloudId")
+    suspend fun deleteByCloudId(cloudId: String)
+
+    // Tareas locales, para subirlas al iniciar sesión
+    @Query("SELECT * FROM tasks")
+    suspend fun getAllOnce(): List<Task>
 }
