@@ -13,3 +13,18 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Kotlin 2.x (sesiones y reportes de error)
+.kotlin/
+
+# Binarios compilados
+*.apk
+*.aab
+
+# Llaves de firma (secretos, nunca subir)
+*.jks
+*.keystore
+
+# Logs y volcados de la JVM
+*.log
+hs_err_pid*
